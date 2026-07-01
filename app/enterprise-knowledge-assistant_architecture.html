@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enterprise Knowledge Assistant — Architecture</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f1117;
+    --bg2:       #181c27;
+    --bg3:       #1e2332;
+    --border:    rgba(255,255,255,0.08);
+    --border2:   rgba(255,255,255,0.14);
+    --text:      #e2e4ed;
+    --muted:     #7c8099;
+    --purple:    #8b7cf8;
+    --purple-bg: rgba(139,124,248,0.12);
+    --amber:     #f0a940;
+    --amber-bg:  rgba(240,169,64,0.12);
+    --teal:      #34c9a0;
+    --teal-bg:   rgba(52,201,160,0.12);
+    --coral:     #f07060;
+    --coral-bg:  rgba(240,112,96,0.12);
+    --gray:      #9ca0b0;
+    --gray-bg:   rgba(156,160,176,0.12);
+    --mono:      'JetBrains Mono', 'Fira Mono', monospace;
+    --sans:      'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 24px 60px;
+  }
+
+  header { text-align: center; margin-bottom: 40px; }
+  header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; color: var(--text); }
+  header p { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-bottom: 36px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  .diagram-wrap { width: 100%; max-width: 880px; }
+
+  svg text { font-family: var(--sans); }
+
+  .node-purple rect { fill: var(--purple-bg); stroke: var(--purple); stroke-width: 1; }
+  .node-purple .label { fill: var(--purple); font-size: 13px; font-weight: 600; }
+  .node-purple .sublabel { fill: #a89ef8; font-size: 11px; }
+
+  .node-amber rect { fill: var(--amber-bg); stroke: var(--amber); stroke-width: 1; }
+  .node-amber .label { fill: var(--amber); font-size: 13px; font-weight: 600; }
+  .node-amber .sublabel { fill: #c9974a; font-size: 11px; }
+
+  .node-teal rect { fill: var(--teal-bg); stroke: var(--teal); stroke-width: 1; }
+  .node-teal .label { fill: var(--teal); font-size: 13px; font-weight: 600; }
+  .node-teal .sublabel { fill: #5ec9ad; font-size: 11px; }
+
+  .node-coral rect { fill: var(--coral-bg); stroke: var(--coral); stroke-width: 1; }
+  .node-coral .label { fill: var(--coral); font-size: 13px; font-weight: 600; }
+  .node-coral .sublabel { fill: #d4806f; font-size: 11px; }
+
+  .node-gray rect { fill: var(--gray-bg); stroke: var(--gray); stroke-width: 1; }
+  .node-gray .label { fill: var(--gray); font-size: 13px; font-weight: 600; }
+
+  .pydantic-badge rect { fill: rgba(255,255,255,0.04); stroke: rgba(255,255,255,0.12); stroke-width: 0.75; stroke-dasharray: 3 2; }
+  .pydantic-badge .key { fill: #7c8099; font-size: 10px; font-weight: 500; }
+  .pydantic-badge .val { font-size: 10px; font-weight: 600; }
+  .pydantic-badge .val-purple { fill: #a89ef8; }
+  .pydantic-badge .val-amber  { fill: #d4ac6a; }
+  .pydantic-badge .val-teal   { fill: #5ec9ad; }
+
+  .arr { stroke: rgba(255,255,255,0.22); stroke-width: 1; fill: none; }
+  .arr-label { fill: #5a5f78; font-size: 10px; }
+  .leader { stroke: rgba(255,255,255,0.12); stroke-width: 0.75; stroke-dasharray: 3 2; fill: none; }
+
+  .persist-bar rect { fill: rgba(156,160,176,0.07); stroke: rgba(156,160,176,0.2); stroke-width: 0.75; }
+  .persist-bar text { fill: var(--muted); font-size: 10.5px; }
+
+  .tooltip {
+    position: fixed; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--text);
+    max-width: 270px; line-height: 1.5; pointer-events: none; opacity: 0;
+    transition: opacity 0.15s; z-index: 99;
+  }
+  .tooltip.show { opacity: 1; }
+  .tooltip .tt-title { font-weight: 600; font-size: 12.5px; margin-bottom: 4px; }
+  .tooltip .tt-code { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: rgba(255,255,255,0.04); padding: 2px 5px; border-radius: 4px; display: inline-block; margin-top: 3px; }
+
+  .clickable { cursor: pointer; }
+  .clickable rect { transition: filter 0.15s; }
+  .clickable:hover rect { filter: brightness(1.25); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Enterprise Knowledge Assistant</h1>
+  <p>Architecture diagram · hover nodes for detail · FastAPI + LangGraph + hybrid RAG (ChromaDB + Neo4j)</p>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#8b7cf8"></div>LLM / agent step</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f0a940"></div>Guardrail / gate / router</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#34c9a0"></div>Data / cache / success path</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f07060"></div>Blocked / fallback path</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,0.08); border:1px dashed rgba(255,255,255,0.2)"></div>Config / schema badge</div>
+</div>
+
+<div class="diagram-wrap">
+<svg width="100%" viewBox="0 0 880 800" role="img">
+  <title>Enterprise Knowledge Assistant Architecture</title>
+  <desc>Pipeline flowchart: input guardrails, semantic cache, model router, LangGraph agent with tools, output guardrails, ending in a returned answer or a blocked response.</desc>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arr-coral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="rgba(240,112,96,0.5)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arr-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="rgba(52,201,160,0.5)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- START -->
+  <g class="node-gray">
+    <rect x="300" y="16" width="180" height="34" rx="17"/>
+    <text class="label" x="390" y="37" text-anchor="middle">START · POST /chat</text>
+  </g>
+  <line x1="390" y1="50" x2="390" y2="80" class="arr" marker-end="url(#arr)"/>
+
+  <!-- NODE 1: input_guards -->
+  <g class="node-amber clickable" id="n-input" data-tt="input">
+    <rect x="200" y="80" width="380" height="72" rx="8"/>
+    <text class="label" x="390" y="102" text-anchor="middle">input_guards</text>
+    <text class="sublabel" x="390" y="119" text-anchor="middle">Injection regex + Presidio PII mask</text>
+    <text class="sublabel" x="390" y="134" text-anchor="middle">empty / too-long input → blocked</text>
+  </g>
+  <g class="pydantic-badge clickable" id="n-input-badge" data-tt="inputbadge">
+    <rect x="595" y="82" width="170" height="64" rx="6"/>
+    <text class="key" x="605" y="97">check_input() returns</text>
+    <text class="val val-amber" x="605" y="112" style="font-family:monospace;font-size:10.5px">allowed · text · flags</text>
+    <text class="key" x="605" y="127">reasons · block_reason</text>
+    <text class="key" x="605" y="141">PII-masked text flows on</text>
+  </g>
+  <line x1="580" y1="114" x2="595" y2="114" class="leader"/>
+
+  <line x1="390" y1="152" x2="390" y2="182" class="arr" marker-end="url(#arr)"/>
+
+  <!-- NODE 2: semantic_cache -->
+  <g class="node-teal clickable" id="n-cache" data-tt="cache">
+    <rect x="200" y="182" width="380" height="58" rx="8"/>
+    <text class="label" x="390" y="205" text-anchor="middle">semantic_cache</text>
+    <text class="sublabel" x="390" y="222" text-anchor="middle">SemanticCache.get() — fakeredis + local cosine sim</text>
+  </g>
+  <g class="pydantic-badge clickable" id="n-cache-badge" data-tt="cachebadge">
+    <rect x="595" y="184" width="170" height="52" rx="6"/>
+    <text class="key" x="605" y="199">cache_hit → skip</text>
+    <text class="val val-teal" x="605" y="214" style="font-family:monospace;font-size:10.5px">router+agent+guards</text>
+    <text class="key" x="605" y="228">returns cached dict</text>
+  </g>
+  <line x1="580" y1="210" x2="595" y2="210" class="leader"/>
+
+  <line x1="390" y1="240" x2="390" y2="270" class="arr" marker-end="url(#arr)"/>
+
+  <!-- NODE 3: model_router -->
+  <g class="node-amber clickable" id="n-router" data-tt="router">
+    <rect x="200" y="270" width="380" height="58" rx="8"/>
+    <text class="label" x="390" y="293" text-anchor="middle">model_router</text>
+    <text class="sublabel" x="390" y="310" text-anchor="middle">complexity score ≥ 2 → gpt-4o, else gpt-4o-mini</text>
+  </g>
+  <g class="pydantic-badge clickable" id="n-router-badge" data-tt="routerbadge">
+    <rect x="595" y="272" width="170" height="52" rx="6"/>
+    <text class="key" x="605" y="287">route_model() signals</text>
+    <text class="val val-amber" x="605" y="302" style="font-family:monospace;font-size:10.5px">multi-hop · tool-need</text>
+    <text class="key" x="605" y="316">long query · conjunctions</text>
+  </g>
+  <line x1="580" y1="298" x2="595" y2="298" class="leader"/>
+
+  <line x1="390" y1="328" x2="390" y2="358" class="arr" marker-end="url(#arr)"/>
+
+  <!-- NODE 4: agent -->
+  <g class="node-purple clickable" id="n-agent" data-tt="agent">
+    <rect x="200" y="358" width="380" height="72" rx="8"/>
+    <text class="label" x="390" y="380" text-anchor="middle">agent (LangGraph ReAct loop)</text>
+    <text class="sublabel" x="390" y="397" text-anchor="middle">run_agent() — ChatOpenAI via OpenRouter, bound to 4 tools</text>
+    <text class="sublabel" x="390" y="412" text-anchor="middle">2 retries → falls back to plain vector RAG on error</text>
+  </g>
+  <g class="pydantic-badge clickable" id="n-agent-badge" data-tt="agentbadge">
+    <rect x="595" y="360" width="170" height="80" rx="6"/>
+    <text class="key" x="605" y="375">get_tools() — 4 tools</text>
+    <text class="val val-purple" x="605" y="390" style="font-family:monospace;font-size:10.5px">retrieve · web_search</text>
+    <text class="val val-purple" x="605" y="404" style="font-family:monospace;font-size:10.5px">sql_query · python_exec</text>
+    <text class="key" x="605" y="420">retrieve = hybrid_search()</text>
+    <text class="key" x="605" y="433">vector + graph + rerank</text>
+  </g>
+  <line x1="580" y1="394" x2="595" y2="394" class="leader"/>
+
+  <line x1="390" y1="430" x2="390" y2="460" class="arr" marker-end="url(#arr)"/>
+
+  <!-- NODE 5: output_guards -->
+  <g class="node-amber clickable" id="n-output" data-tt="output">
+    <rect x="200" y="460" width="380" height="72" rx="8"/>
+    <text class="label" x="390" y="482" text-anchor="middle">output_guards</text>
+    <text class="sublabel" x="390" y="499" text-anchor="middle">LLM-judge groundedness + PII rescan + toxicity filter</text>
+    <text class="sublabel" x="390" y="514" text-anchor="middle">not allowed → blocked_reason returned</text>
+  </g>
+  <g class="pydantic-badge clickable" id="n-output-badge" data-tt="outputbadge">
+    <rect x="595" y="462" width="170" height="64" rx="6"/>
+    <text class="key" x="605" y="477">check_output() returns</text>
+    <text class="val val-amber" x="605" y="492" style="font-family:monospace;font-size:10.5px">allowed · text · grounded</text>
+    <text class="key" x="605" y="507">flags · reasons</text>
+    <text class="key" x="605" y="521">block_reason</text>
+  </g>
+  <line x1="580" y1="494" x2="595" y2="494" class="leader"/>
+
+  <!-- branch: pass / blocked -->
+  <path d="M270 532 L230 532 L230 562" class="arr" marker-end="url(#arr)"/>
+  <text class="arr-label" x="200" y="550" text-anchor="middle">allowed</text>
+
+  <path d="M510 532 L550 532 L550 562" class="arr" stroke="rgba(240,112,96,0.5)" stroke-dasharray="5 3" marker-end="url(#arr-coral)"/>
+  <text class="arr-label" x="583" y="550" text-anchor="middle" style="fill:#d4806f">blocked</text>
+
+  <g class="node-teal clickable" id="n-return" data-tt="return">
+    <rect x="100" y="562" width="260" height="58" rx="8"/>
+    <text class="label" x="230" y="585" text-anchor="middle">return answer</text>
+    <text class="sublabel" x="230" y="602" text-anchor="middle">answer + citations + trace_id</text>
+  </g>
+
+  <g class="node-coral clickable" id="n-blocked" data-tt="blocked">
+    <rect x="420" y="562" width="260" height="58" rx="8"/>
+    <text class="label" x="550" y="585" text-anchor="middle">blocked_response</text>
+    <text class="sublabel" x="550" y="602" text-anchor="middle">block_reason, citations = []</text>
+  </g>
+
+  <path d="M230 620 L230 660 L390 682" class="arr" marker-end="url(#arr)"/>
+  <path d="M550 620 L550 660 L390 682" class="arr" stroke="rgba(240,112,96,0.5)" stroke-dasharray="5 3" marker-end="url(#arr-coral)"/>
+
+  <!-- bypass: input blocked -->
+  <path d="M580 122 L820 122 L820 665 L480 680" class="arr" stroke="rgba(240,112,96,0.45)" stroke-dasharray="5 3" fill="none" marker-end="url(#arr-coral)"/>
+  <text class="arr-label" x="822" y="400" text-anchor="middle" style="fill:#d4806f" transform="rotate(90 822 400)">input blocked → skip everything</text>
+
+  <!-- bypass: cache hit -->
+  <path d="M580 218 L850 218 L850 672 L480 672" class="arr" stroke="rgba(52,201,160,0.45)" stroke-dasharray="5 3" fill="none" marker-end="url(#arr-teal)"/>
+  <text class="arr-label" x="852" y="440" text-anchor="middle" style="fill:#5ec9ad" transform="rotate(90 852 440)">cache hit → skip router/agent/guards</text>
+
+  <!-- END -->
+  <g class="node-gray">
+    <rect x="300" y="690" width="180" height="34" rx="17"/>
+    <text class="label" x="390" y="711" text-anchor="middle">END · JSON response</text>
+  </g>
+
+  <!-- persistence bar -->
+  <g class="persist-bar">
+    <rect x="40" y="748" width="800" height="30" rx="6"/>
+    <text x="440" y="767" text-anchor="middle">
+      📊 Every /chat request traced in Langfuse (input_guards → cache → router → agent → output_guards spans) · successful answers written to SemanticCache · knowledge lives in ChromaDB (local) + Neo4j Aura (graph)
+    </text>
+  </g>
+
+  <!-- left sidebar: trace/state -->
+  <g class="pydantic-badge">
+    <rect x="14" y="80" width="170" height="150" rx="6"/>
+    <text class="key" x="24" y="96">Threaded through every step</text>
+    <text class="val val-purple" x="24" y="112" style="font-size:10px;font-family:monospace">trace_id = uuid4()</text>
+    <text class="key" x="24" y="128">tracer.trace("pipeline")</text>
+    <text class="key" x="24" y="142">root span wraps every</text>
+    <text class="key" x="24" y="156">tracer.span(...) below</text>
+    <text class="key" x="24" y="176" style="font-style:italic">Same return-dict shape</text>
+    <text class="key" x="24" y="190" style="font-style:italic">preserved Phase 1→2</text>
+    <text class="key" x="24" y="210" style="font-style:italic">(app/pipeline.py Pipeline)</text>
+  </g>
+  <line x1="184" y1="150" x2="200" y2="150" class="leader"/>
+
+</svg>
+</div>
+
+<div class="tooltip" id="tooltip">
+  <div class="tt-title" id="tt-title"></div>
+  <div id="tt-body"></div>
+</div>
+
+<script>
+const tips = {
+  input: {
+    title: 'input_guards',
+    body: '<span class="tt-code">check_input()</span> in app/guardrails/input_guards.py. Regex bank (_INJECTION_RE) catches phrases like "ignore previous instructions", "jailbreak", "DAN", "developer mode". Presidio detects PERSON/EMAIL/PHONE/CREDIT_CARD/US_SSN (regex fallback if spaCy model missing) and masks them before the message goes downstream.'
+  },
+  inputbadge: {
+    title: 'check_input() result dict',
+    body: 'Fields: <span class="tt-code">allowed: bool</span>, <span class="tt-code">text</span> (PII-masked), <span class="tt-code">flags</span>, <span class="tt-code">reasons</span>, <span class="tt-code">block_reason</span>. If not allowed, the pipeline returns immediately with a blocked response.'
+  },
+  cache: {
+    title: 'semantic_cache',
+    body: '<span class="tt-code">get_semantic_cache().get(safe_message)</span> in app/caching/semantic_cache.py. Backed by fakeredis with local-embedding cosine similarity — a near-duplicate question returns the cached answer dict instantly, skipping model routing, the agent, and output guardrails entirely.'
+  },
+  cachebadge: {
+    title: 'Cache hit shortcut',
+    body: 'On hit, pipeline.py copies the cached dict, stamps a new <span class="tt-code">trace_id</span> and <span class="tt-code">latency_ms</span>, sets <span class="tt-code">cache_hit=True</span>, and returns — router/agent/output_guards never run.'
+  },
+  router: {
+    title: 'model_router',
+    body: '<span class="tt-code">route_model()</span> in app/routing/model_router.py scores query complexity via regex heuristics. Score ≥ 2 (threshold) picks <span class="tt-code">settings.llm_advanced_model</span> (openai/gpt-4o), else <span class="tt-code">settings.llm_default_model</span> (openai/gpt-4o-mini).'
+  },
+  routerbadge: {
+    title: 'Complexity signals',
+    body: 'Multi-hop patterns (e.g. "depends on", "who do I contact"), tool-need patterns (sum/total/count/query), query length &gt; 220 chars / 35 words, &gt; 1 "?" or ≥ 2 "and" — each adds to the score.'
+  },
+  agent: {
+    title: 'agent (LangGraph)',
+    body: '<span class="tt-code">run_agent()</span> in app/agent/graph.py — a StateGraph ReAct loop: agent node (LLM decides tool call or final answer) ↔ ToolNode, up to 6 steps. On exception, retried once; after 2 failures Pipeline falls back to <span class="tt-code">_fallback_vector_rag()</span> (plain ChromaDB search + single chat completion) so the API never hard-fails.'
+  },
+  agentbadge: {
+    title: 'The 4 bound tools',
+    body: '<span class="tt-code">retrieve</span> → hybrid_search() = ChromaDB vector + Neo4j graph_search() + sentence-transformers CrossEncoder rerank. <span class="tt-code">web_search</span> → Tavily (degrades gracefully with no key). <span class="tt-code">sql_query</span> → read-only SELECT over an in-memory SQLite built from data/raw CSVs. <span class="tt-code">python_exec</span> → sandboxed exec() blocking import/open/os/sys/subprocess/socket.'
+  },
+  output: {
+    title: 'output_guards',
+    body: '<span class="tt-code">check_output()</span> in app/guardrails/output_guards.py. LLM-judge (<span class="tt-code">_JUDGE_SYSTEM_PROMPT</span>) asks the same OpenRouter model to return strict JSON <span class="tt-code">{grounded, confidence, reason}</span> comparing the answer to retrieved context. Also re-runs the PII detector on the answer and applies a lightweight toxicity keyword filter.'
+  },
+  outputbadge: {
+    title: 'check_output() result dict',
+    body: 'Fields: <span class="tt-code">allowed</span>, <span class="tt-code">text</span> (possibly redacted), <span class="tt-code">flags</span>, <span class="tt-code">reasons</span>, <span class="tt-code">grounded: bool | None</span> (None if the judge call itself failed), <span class="tt-code">block_reason</span>.'
+  },
+  return: {
+    title: 'return answer',
+    body: 'Final dict preserves the Phase-1 shape (<span class="tt-code">answer, citations, trace_id, latency_ms, model, chunks_retrieved</span>) and adds Phase-2 fields (<span class="tt-code">cache_hit, model_used, guardrail_flags, tool_calls, blocked</span>). Also written to SemanticCache before returning.'
+  },
+  blocked: {
+    title: 'blocked_response',
+    body: 'Returned the moment either guardrail stage sets <span class="tt-code">allowed=False</span>. Shape matches a normal response but with empty citations, zero token counts, and <span class="tt-code">blocked=True</span> / <span class="tt-code">blocked_reason</span> set.'
+  }
+};
+
+const tt = document.getElementById('tooltip');
+const ttTitle = document.getElementById('tt-title');
+const ttBody = document.getElementById('tt-body');
+
+document.querySelectorAll('[data-tt]').forEach(el => {
+  el.addEventListener('mouseenter', () => {
+    const key = el.dataset.tt;
+    if (!tips[key]) return;
+    ttTitle.textContent = tips[key].title;
+    ttBody.innerHTML = tips[key].body;
+    tt.classList.add('show');
+  });
+  el.addEventListener('mousemove', e => {
+    tt.style.left = (e.clientX + 14) + 'px';
+    tt.style.top  = (e.clientY + 14) + 'px';
+  });
+  el.addEventListener('mouseleave', () => tt.classList.remove('show'));
+});
+</script>
+</body>
+</html>
