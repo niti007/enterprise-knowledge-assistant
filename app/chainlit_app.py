@@ -74,42 +74,35 @@ async def on_message(message: cl.Message) -> None:
         return
 
     # ----------------------------------------------------------------
-    # Single call to /chat — the FastAPI pipeline runs guardrails, cache,
-    # routing, agent (tools), and guardrails again. We surface each stage
-    # as a cl.Step afterwards using the fields returned in the response.
+    # Run the pipeline IN-PROCESS (guardrails, cache, routing, agent+tools,
+    # guardrails). Pipeline.run is blocking, so execute it in a worker thread
+    # to keep the Chainlit event loop responsive. We surface each stage as a
+    # cl.Step afterwards using the fields returned in the result dict.
+    #
+    # If USE_REMOTE_API=1 and FASTAPI_URL is set, call the HTTP backend instead.
     # ----------------------------------------------------------------
-    async with cl.Step(name="📡 Calling Knowledge Assistant API", type="tool") as call_step:
+    async with cl.Step(name="🧠 Knowledge Assistant pipeline", type="tool") as call_step:
         call_step.input = query
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{FASTAPI_URL}/chat",
-                    json={
-                        "session_id": session_id,
-                        "message": query,
-                        "top_k": 5,
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-        except httpx.ConnectError:
-            await cl.Message(
-                content=(
-                    "❌ Cannot connect to the FastAPI backend.\n\n"
-                    f"Make sure it's running: `uvicorn app.main:app --port 8001`\n"
-                    f"(Tried: {FASTAPI_URL})"
-                )
-            ).send()
-            return
-        except httpx.HTTPStatusError as exc:
-            detail = exc.response.json().get("detail", str(exc))
-            await cl.Message(content=f"❌ API error: {detail}").send()
-            return
+            if os.getenv("USE_REMOTE_API") == "1":
+                async with httpx.AsyncClient(timeout=180.0) as client:
+                    resp = await client.post(
+                        f"{FASTAPI_URL}/chat",
+                        json={"session_id": session_id, "message": query, "top_k": 5},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+            else:
+                import asyncio
+
+                from app.pipeline import get_pipeline
+
+                data = await asyncio.to_thread(get_pipeline().run, query, session_id, 5)
         except Exception as exc:
-            await cl.Message(content=f"❌ Unexpected error: {exc}").send()
+            await cl.Message(content=f"❌ Pipeline error: {exc}").send()
             return
 
-        call_step.output = f"{response.status_code} OK"
+        call_step.output = "done"
 
     # ----------------------------------------------------------------
     # Step indicator: Guardrails / cache
