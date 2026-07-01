@@ -64,20 +64,12 @@ python -m app.ingestion.graph_builder         # LLM entity/relation extraction �
 uvicorn app.main:app --host 127.0.0.1 --port 8001
 # Terminal 2 — UI
 chainlit run app/chainlit_app.py --port 8000
-```
-Open **http://localhost:8000**. Try:
-- "Who owns the Payment-Service?"
-- "If Payment-Service goes down, what does it depend on and who do I contact?"  (multi-hop)
-- "Which team manages the Data Warehouse?"
+
 
 > First request is a cold start (~1–2 min: loads Presidio/spaCy/ONNX/CrossEncoder).
 > Subsequent queries are ~6–10s; cache hits ~0.6s.
 
-Test the API directly:
-```bash
-curl http://localhost:8001/health
-curl -X POST http://localhost:8001/chat -H "Content-Type: application/json" \
-  -d '{"message":"Who owns the Payment-Service?"}'
+
 ```
 
 ---
