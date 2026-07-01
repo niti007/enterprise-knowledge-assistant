@@ -1,0 +1,54 @@
+# Core (fastapi/uvicorn unpinned — let chainlit+chromadb resolver pick compatible)
+fastapi
+uvicorn[standard]
+pydantic>=2.7,<3
+pydantic-settings>=2.3
+python-dotenv==1.0.1
+httpx>=0.27
+
+# OpenAI
+openai==1.35.3
+
+# Vector DB
+chromadb==0.5.3
+
+# Document generation / ingestion
+reportlab==4.2.2
+faker==25.9.2
+pymupdf==1.24.5          # PDF reading (fitz)
+python-docx==1.1.2
+pandas==2.2.2
+
+# Graph DB
+neo4j==5.21.0
+
+# LangChain / LangGraph
+langchain==0.2.6
+langchain-openai==0.1.14
+langchain-community==0.2.6
+langgraph==0.1.19
+
+# Re-ranking
+sentence-transformers==3.0.1
+
+# Observability
+langfuse==2.36.2
+
+# Caching
+redis==5.0.7
+
+# Guardrails
+presidio-analyzer==2.2.355
+presidio-anonymizer==2.2.355
+
+# Chainlit UI
+chainlit==1.1.306
+
+# Evaluation
+ragas==0.1.14
+locust==2.29.1
+
+# Utilities
+tiktoken==0.7.0
+tenacity==8.3.0
+structlog==24.2.0
