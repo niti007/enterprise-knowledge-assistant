@@ -20,8 +20,8 @@ env/
 files/
 .files/
 
-# Data (regenerate locally)
-data/raw/
+# Data — raw sample corpus IS committed so others can use it.
+# Only the built index / processed artifacts are ignored (regenerate locally).
 data/processed/
 data/chroma_db/
 
