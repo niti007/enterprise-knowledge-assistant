@@ -10,7 +10,7 @@
 
 ## Context
 
-Building EduHubSpot Module 14 capstone: a production-grade AI Knowledge Assistant. Empty
+Building capstone: a production-grade AI Knowledge Assistant. Empty
 project dir today (`Full end to end app/`, not yet a git repo). Goal = full-stack app hitting
 every rubric item: hybrid RAG (vector + graph), LangGraph agent w/ tools, multi-layer
 guardrails, FastAPI serving, Langfuse observability, semantic cache + model routing, plus
